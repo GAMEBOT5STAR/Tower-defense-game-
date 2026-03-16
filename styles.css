@@ -1,0 +1,526 @@
+/* 攻打台娃 - 塔防游戏样式 */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+    background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+    min-height: 100vh;
+    color: #333;
+    overflow-x: hidden;
+}
+
+.game-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 游戏标题 */
+.game-header {
+    text-align: center;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    border: 3px solid #e74c3c;
+}
+
+.game-header h1 {
+    font-size: 3.5em;
+    color: #e74c3c;
+    text-shadow: 3px 3px 0 #c0392b;
+    margin-bottom: 10px;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+
+.subtitle {
+    font-size: 1.3em;
+    color: #2c3e50;
+    font-weight: 500;
+}
+
+/* 主游戏区域 */
+.main-game {
+    display: grid;
+    grid-template-columns: 280px 1fr 280px;
+    gap: 20px;
+    flex: 1;
+    margin-bottom: 20px;
+}
+
+/* 控制面板 */
+.control-panel {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+    border: 2px solid #3498db;
+}
+
+.game-info {
+    margin-bottom: 25px;
+}
+
+.resource-display {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.resource-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: linear-gradient(135deg, #ecf0f1, #bdc3c7);
+    border-radius: 10px;
+    border: 2px solid #95a5a6;
+}
+
+.resource-item .label {
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.resource-item .value {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #e74c3c;
+    background: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 2px solid #c0392b;
+}
+
+/* 防御塔选择 */
+.tower-selection {
+    margin-bottom: 25px;
+}
+
+.tower-selection h3 {
+    color: #2c3e50;
+    margin-bottom: 15px;
+    text-align: center;
+    font-size: 1.3em;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 8px;
+}
+
+.tower-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.tower-item {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    background: linear-gradient(135deg, #ffffff, #f8f9fa);
+    border: 2px solid #bdc3c7;
+    border-radius: 10px;
+    cursor: grab;           /* 拖拽手形 */
+    transition: all 0.2s ease;
+    gap: 12px;
+    user-select: none;      /* 防止拖拽时选中文字 */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    position: relative;
+}
+
+.tower-item:hover {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 6px 18px rgba(52, 152, 219, 0.35);
+    border-color: #3498db;
+    background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+}
+
+.tower-item:active {
+    cursor: grabbing;
+    transform: scale(0.96);
+    box-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
+    border-color: #2980b9;
+    background: linear-gradient(135deg, #bbdefb, #90caf9);
+}
+
+.tower-icon {
+    width: 40px;
+    height: 40px;
+    background: #3498db;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 0.9em;
+    border: 2px solid #2980b9;
+}
+
+.tower-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tower-name {
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.tower-cost {
+    font-size: 0.9em;
+    color: #e74c3c;
+    font-weight: 500;
+}
+
+/* 游戏控制按钮 */
+.game-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.1em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+    color: white;
+    border: 2px solid #c0392b;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #c0392b, #a93226);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+}
+
+.btn-secondary {
+    background: linear-gradient(135deg, #95a5a6, #7f8c8d);
+    color: white;
+    border: 2px solid #7f8c8d;
+}
+
+.btn-secondary:hover {
+    background: linear-gradient(135deg, #7f8c8d, #6c7a7d);
+    transform: translateY(-2px);
+}
+
+/* 游戏地图 */
+.game-map {
+    position: relative;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+    border: 2px solid #27ae60;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#game-canvas {
+    border: 3px solid #2c3e50;
+    border-radius: 10px;
+    background: #34495e;
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* 覆盖层 */
+.overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(44, 62, 80, 0.95);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 15px;
+    z-index: 10;
+}
+
+.overlay.hidden {
+    display: none;
+}
+
+.overlay-content {
+    background: white;
+    padding: 30px;
+    border-radius: 15px;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    border: 3px solid #e74c3c;
+    max-width: 400px;
+}
+
+.overlay-content h2 {
+    color: #e74c3c;
+    margin-bottom: 15px;
+    font-size: 2em;
+}
+
+.overlay-content p {
+    color: #2c3e50;
+    margin-bottom: 20px;
+    font-size: 1.1em;
+    line-height: 1.5;
+    white-space: pre-line;
+}
+
+/* 信息面板 */
+.info-panel {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+    border: 2px solid #f39c12;
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+.enemy-info h3, .mission-info h3 {
+    color: #2c3e50;
+    margin-bottom: 15px;
+    text-align: center;
+    font-size: 1.3em;
+    border-bottom: 2px solid #f39c12;
+    padding-bottom: 8px;
+}
+
+.enemy-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.enemy-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    background: linear-gradient(135deg, #fff3e0, #ffe0b2);
+    border: 2px solid #ffb74d;
+    border-radius: 8px;
+    gap: 10px;
+}
+
+.enemy-icon {
+    width: 30px;
+    height: 30px;
+    background: #e74c3c;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 0.8em;
+    border: 2px solid #c0392b;
+}
+
+.enemy-details {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.enemy-details span:first-child {
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.enemy-health {
+    font-size: 0.9em;
+    color: #e74c3c;
+}
+
+.mission-content {
+    background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
+    padding: 15px;
+    border-radius: 8px;
+    border: 2px solid #66bb6a;
+}
+
+.mission-content p {
+    margin-bottom: 8px;
+    color: #2e7d32;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.mission-content p:last-child {
+    margin-bottom: 0;
+}
+
+/* 游戏底部 */
+.game-footer {
+    text-align: center;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 10px;
+    margin-top: 20px;
+    border: 2px solid #9b59b6;
+}
+
+.game-footer p {
+    color: #2c3e50;
+    font-style: italic;
+    font-size: 0.9em;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+    .main-game {
+        grid-template-columns: 250px 1fr 250px;
+        gap: 15px;
+    }
+    
+    .game-header h1 {
+        font-size: 2.8em;
+    }
+}
+
+@media (max-width: 992px) {
+    .main-game {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr auto;
+        gap: 15px;
+    }
+    
+    .control-panel, .info-panel {
+        order: 1;
+    }
+    
+    .game-map {
+        order: 2;
+        min-height: 500px;
+    }
+    
+    .control-panel {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+    
+    .game-controls {
+        grid-column: 1 / -1;
+        flex-direction: row;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 768px) {
+    .game-container {
+        padding: 10px;
+    }
+    
+    .game-header h1 {
+        font-size: 2.2em;
+    }
+    
+    .subtitle {
+        font-size: 1.1em;
+    }
+    
+    .control-panel {
+        grid-template-columns: 1fr;
+    }
+    
+    #game-canvas {
+        width: 100%;
+        height: auto;
+        max-width: 600px;
+    }
+}
+
+@media (max-width: 480px) {
+    .game-header h1 {
+        font-size: 1.8em;
+    }
+    
+    .btn {
+        padding: 10px 15px;
+        font-size: 1em;
+    }
+    
+    .tower-item, .enemy-item {
+        padding: 8px;
+    }
+}
+
+/* 动画效果 */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-out;
+}
+
+/* 特殊效果类 */
+.victory-glow {
+    box-shadow: 0 0 30px rgba(46, 204, 113, 0.8);
+    animation: pulse 1s infinite;
+}
+
+.game-over-glow {
+    box-shadow: 0 0 30px rgba(231, 76, 60, 0.8);
+    animation: pulse 1s infinite;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #3498db;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #2980b9;
+}

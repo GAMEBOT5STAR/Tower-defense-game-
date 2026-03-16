@@ -1,0 +1,119 @@
+{
+  "levels": [
+    {
+      "id": 1,
+      "name": "高雄战役",
+      "description": "解放台湾南部，保卫高雄同胞",
+      "startingGold": 100,
+      "startingHealth": 100,
+      "enemyWaves": 3,
+      "enemiesPerWave": 5,
+      "enemyTypes": ["infantry"],
+      "spawnInterval": 3000,
+      "reward": 50,
+      "map": {
+        "start": {"x": 0, "y": 7},
+        "end": {"x": 19, "y": 7},
+        "path": [
+          {"x": 0, "y": 7},
+          {"x": 5, "y": 7},
+          {"x": 10, "y": 7},
+          {"x": 15, "y": 7},
+          {"x": 19, "y": 7}
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "name": "台中防线",
+      "description": "巩固中部防线，解放台中地区",
+      "startingGold": 150,
+      "startingHealth": 100,
+      "enemyWaves": 4,
+      "enemiesPerWave": 6,
+      "enemyTypes": ["infantry", "tank"],
+      "spawnInterval": 2500,
+      "reward": 75,
+      "map": {
+        "start": {"x": 0, "y": 7},
+        "end": {"x": 19, "y": 7},
+        "path": [
+          {"x": 0, "y": 7},
+          {"x": 5, "y": 7},
+          {"x": 10, "y": 7},
+          {"x": 15, "y": 7},
+          {"x": 19, "y": 7}
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "name": "新竹保卫战",
+      "description": "保卫科技重镇新竹，抵御台蛙进攻",
+      "startingGold": 200,
+      "startingHealth": 100,
+      "enemyWaves": 5,
+      "enemiesPerWave": 7,
+      "enemyTypes": ["infantry", "tank"],
+      "spawnInterval": 2000,
+      "reward": 100,
+      "map": {
+        "start": {"x": 0, "y": 7},
+        "end": {"x": 19, "y": 7},
+        "path": [
+          {"x": 0, "y": 7},
+          {"x": 5, "y": 7},
+          {"x": 10, "y": 7},
+          {"x": 15, "y": 7},
+          {"x": 19, "y": 7}
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "name": "桃园攻坚战",
+      "description": "攻克桃园机场，切断台蛙补给线",
+      "startingGold": 250,
+      "startingHealth": 100,
+      "enemyWaves": 6,
+      "enemiesPerWave": 8,
+      "enemyTypes": ["infantry", "tank", "boss"],
+      "spawnInterval": 1500,
+      "reward": 125,
+      "map": {
+        "start": {"x": 0, "y": 7},
+        "end": {"x": 19, "y": 7},
+        "path": [
+          {"x": 0, "y": 7},
+          {"x": 5, "y": 7},
+          {"x": 10, "y": 7},
+          {"x": 15, "y": 7},
+          {"x": 19, "y": 7}
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "name": "台北决战",
+      "description": "最终决战！攻克台北，实现祖国统一",
+      "startingGold": 300,
+      "startingHealth": 100,
+      "enemyWaves": 8,
+      "enemiesPerWave": 10,
+      "enemyTypes": ["infantry", "tank", "boss"],
+      "spawnInterval": 1000,
+      "reward": 200,
+      "map": {
+        "start": {"x": 0, "y": 7},
+        "end": {"x": 19, "y": 7},
+        "path": [
+          {"x": 0, "y": 7},
+          {"x": 5, "y": 7},
+          {"x": 10, "y": 7},
+          {"x": 15, "y": 7},
+          {"x": 19, "y": 7}
+        ]
+      }
+    }
+  ]
+}
