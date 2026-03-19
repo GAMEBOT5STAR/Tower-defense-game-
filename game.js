@@ -358,8 +358,6 @@ class TowerDefenseGame {
 
         this.gameState = 'idle';
         this.score  = 0;
-        this.gold   = 100;
-        this.health = 100;
         this.level  = 1;
         this.wave   = 0;
         this.enemies     = [];
@@ -367,50 +365,335 @@ class TowerDefenseGame {
         this.projectiles = [];
         this.drag        = null;   // 当前拖拽状态 { type, cost, x, y, active }
         this.gameTime    = 0;
+        
+        // 波次生成系统（帧驱动）
         this.waveSpawning = false;
+        this.spawnQueue = [];      // 生成队列 [{time, type}]
+        this.spawnTimer = 0;
+        this._waveRewarded = false;
+        
         this._insufficientGoldFlash = 0; // 金币不足提示计时
+        this._waveBannerUntil = 0;       // 波次Banner显示结束时间
 
         this.config = {
             cellSize: 40,
             mapWidth: 20,
             mapHeight: 15,
-            enemySpawnInterval: 2500,
-            waveSize: 10,
             basePosition: { x: 19, y: 7 }
         };
 
-        this.gameMap = this.generateMap();
+        // 武器升级配置
+        this.towerUpgrades = {
+            basic:   { level: 1, maxLevel: 3, damage: 20,  range: 150, fireRate: 600, cost: 20 },
+            rocket:  { level: 1, maxLevel: 3, damage: 40,  range: 200, fireRate: 900, cost: 50 },
+            missile: { level: 1, maxLevel: 3, damage: 80,  range: 280, fireRate: 1200, cost: 100 }
+        };
+
         this.initializeEventListeners();
-        this.gameLoop();
+        // 标记游戏是否已准备好
+        this._isReady = false;
+        
+        // 初始化关卡选择下拉框
+        if (document.getElementById('level-select')) {
+            document.getElementById('level-select').value = this.level;
+        }
+        
+        // 等待关卡加载完成后再启动游戏循环
+        (async () => {
+            const success = await this.loadLevel(1);
+            if (success) {
+                this._isReady = true;
+                this.gameLoop();
+            } else {
+                console.error('游戏初始化失败，无法启动游戏循环');
+                this.showOverlay('错误', '无法加载关卡数据，请检查 levels.json 文件');
+            }
+        })();
     }
 
-    // ---- 地图生成 ----
-    generateMap() {
-        const map = Array(this.config.mapHeight).fill().map(() =>
-            Array(this.config.mapWidth).fill(0));
-        const path = [
-            { x: 0,  y: 7 },
-            { x: 5,  y: 7 },
-            { x: 10, y: 7 },
-            { x: 15, y: 7 },
-            { x: 19, y: 7 }
-        ];
-        // 填充连续路径
-        for (let i = 0; i < path.length - 1; i++) {
-            const a = path[i], b = path[i + 1];
-            for (let x = Math.min(a.x, b.x); x <= Math.max(a.x, b.x); x++)
-                map[a.y][x] = 1;
+    // ---- 加载关卡 ----
+    async loadLevel(levelId) {
+        console.log('[loadLevel] 开始加载关卡:', levelId);
+        console.log('[loadLevel] 当前页面URL:', window.location.href);
+        
+        try {
+            // 尝试多种路径方式
+            const baseUrl = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+            const jsonUrl = baseUrl + 'levels.json';
+            console.log('[loadLevel] 尝试加载:', jsonUrl);
+            
+            const resp = await fetch(jsonUrl);
+            console.log('[loadLevel] fetch 完成，状态:', resp.status, 'ok:', resp.ok);
+            
+            if (!resp.ok) {
+                throw new Error(`HTTP error! status: ${resp.status}, url: ${jsonUrl}`);
+            }
+            
+            const data = await resp.json();
+            console.log('[loadLevel] JSON 解析完成，关卡数:', data.levels?.length);
+            
+            if (!data.levels || !Array.isArray(data.levels)) {
+                throw new Error('levels.json 格式错误：levels 字段不存在或不是数组');
+            }
+            
+            this.levels = data.levels;
+            this.currentLevel = this.levels.find(l => l.id === levelId);
+            
+            if (!this.currentLevel) {
+                throw new Error(`关卡 ${levelId} 不存在，可用关卡: ${this.levels.map(l => l.id).join(', ')}`);
+            }
+            
+            // 验证关卡数据完整性
+            if (!this.currentLevel.map || !this.currentLevel.map.path) {
+                throw new Error(`关卡 ${levelId} 数据不完整：缺少 map.path`);
+            }
+            
+            // 应用关卡配置
+            this.level = levelId;
+            this.gold = this.currentLevel.startingGold;
+            this.health = this.currentLevel.startingHealth;
+            this.gameMap = this.generateMapFromPath(this.currentLevel.map.path);
+            
+            console.log('[loadLevel] 关卡加载成功:', this.currentLevel.name);
+            console.log('[loadLevel] gameMap 尺寸:', this.gameMap?.length, 'x', this.gameMap?.[0]?.length);
+            return true;
+        } catch (e) {
+            console.error('[loadLevel] 加载关卡失败:', e);
+            console.error('[loadLevel] 错误详情:', e.message);
+            
+            // 使用内置的默认关卡数据作为备用
+            console.log('[loadLevel] 使用内置默认关卡数据');
+            return this._loadDefaultLevel(levelId);
         }
-        map[7][0]  = 2; // 起点：高雄
-        map[7][19] = 3; // 终点：台北
+    }
+    
+    // 内置默认关卡数据（备用方案）
+    _loadDefaultLevel(levelId) {
+        console.log('[_loadDefaultLevel] 加载内置关卡:', levelId);
+        
+        const defaultLevels = [
+            {
+                id: 1,
+                name: "高雄战役",
+                description: "解放台湾南部，保卫高雄同胞",
+                startingGold: 120,
+                startingHealth: 100,
+                enemyWaves: 3,
+                enemiesPerWave: 6,
+                enemyTypes: ["infantry"],
+                spawnInterval: 2500,
+                reward: 40,
+                map: {
+                    start: {x: 0, y: 7},
+                    end: {x: 19, y: 7},
+                    startLabel: "高雄",
+                    endLabel: "台北",
+                    path: [
+                        {x: 0, y: 7},
+                        {x: 5, y: 7},
+                        {x: 10, y: 7},
+                        {x: 15, y: 7},
+                        {x: 19, y: 7}
+                    ]
+                }
+            },
+            {
+                id: 2,
+                name: "台中防线",
+                description: "突破台中防线，向北推进",
+                startingGold: 150,
+                startingHealth: 100,
+                enemyWaves: 4,
+                enemiesPerWave: 7,
+                enemyTypes: ["infantry", "tank"],
+                spawnInterval: 2200,
+                reward: 50,
+                map: {
+                    start: {x: 0, y: 3},
+                    end: {x: 19, y: 11},
+                    startLabel: "台中",
+                    endLabel: "台北",
+                    path: [
+                        {x: 0, y: 3},
+                        {x: 6, y: 3},
+                        {x: 6, y: 11},
+                        {x: 13, y: 11},
+                        {x: 13, y: 3},
+                        {x: 19, y: 3},
+                        {x: 19, y: 11}
+                    ]
+                }
+            },
+            {
+                id: 3,
+                name: "新竹保卫战",
+                description: "攻克新竹科技重镇",
+                startingGold: 180,
+                startingHealth: 100,
+                enemyWaves: 4,
+                enemiesPerWave: 8,
+                enemyTypes: ["infantry", "tank"],
+                spawnInterval: 2000,
+                reward: 55,
+                map: {
+                    start: {x: 0, y: 7},
+                    end: {x: 19, y: 7},
+                    startLabel: "新竹",
+                    endLabel: "台北",
+                    path: [
+                        {x: 0, y: 7},
+                        {x: 4, y: 7},
+                        {x: 4, y: 2},
+                        {x: 10, y: 2},
+                        {x: 10, y: 12},
+                        {x: 16, y: 12},
+                        {x: 16, y: 7},
+                        {x: 19, y: 7}
+                    ]
+                }
+            },
+            {
+                id: 4,
+                name: "桃园攻坚战",
+                description: "拿下桃园，直逼台北",
+                startingGold: 200,
+                startingHealth: 100,
+                enemyWaves: 5,
+                enemiesPerWave: 8,
+                enemyTypes: ["infantry", "tank", "boss"],
+                spawnInterval: 2000,
+                reward: 60,
+                map: {
+                    start: {x: 0, y: 1},
+                    end: {x: 19, y: 13},
+                    startLabel: "桃园",
+                    endLabel: "台北",
+                    path: [
+                        {x: 0, y: 1},
+                        {x: 8, y: 1},
+                        {x: 8, y: 7},
+                        {x: 2, y: 7},
+                        {x: 2, y: 13},
+                        {x: 12, y: 13},
+                        {x: 12, y: 7},
+                        {x: 19, y: 7},
+                        {x: 19, y: 13}
+                    ]
+                }
+            },
+            {
+                id: 5,
+                name: "台北决战",
+                description: "最终决战，解放台湾首府！",
+                startingGold: 250,
+                startingHealth: 100,
+                enemyWaves: 5,
+                enemiesPerWave: 10,
+                enemyTypes: ["tank", "boss"],
+                spawnInterval: 1800,
+                reward: 80,
+                map: {
+                    start: {x: 0, y: 7},
+                    end: {x: 19, y: 7},
+                    startLabel: "台北",
+                    endLabel: "总统府",
+                    path: [
+                        {x: 0, y: 7},
+                        {x: 3, y: 7},
+                        {x: 3, y: 1},
+                        {x: 9, y: 1},
+                        {x: 9, y: 13},
+                        {x: 15, y: 13},
+                        {x: 15, y: 1},
+                        {x: 19, y: 1},
+                        {x: 19, y: 7}
+                    ]
+                }
+            }
+        ];
+        
+        this.levels = defaultLevels;
+        this.currentLevel = defaultLevels.find(l => l.id === levelId);
+        
+        if (!this.currentLevel) {
+            console.error('[_loadDefaultLevel] 默认关卡也不存在:', levelId);
+            // 找不到时回退到第1关
+            this.currentLevel = defaultLevels[0];
+            levelId = 1;
+        }
+        
+        this.level = levelId;
+        this.gold = this.currentLevel.startingGold;
+        this.health = this.currentLevel.startingHealth;
+        this.gameMap = this.generateMapFromPath(this.currentLevel.map.path);
+        
+        console.log('[_loadDefaultLevel] 内置关卡加载成功:', this.currentLevel.name);
+        return true;
+    }
+
+    // ---- 生成90度曲折地图 ----
+    generateMapFromPath(pathPoints) {
+        console.log('[generateMapFromPath] 开始生成地图，路径点:', pathPoints);
+        
+        // 使用正确的方式创建二维数组
+        const map = [];
+        for (let y = 0; y < this.config.mapHeight; y++) {
+            map[y] = [];
+            for (let x = 0; x < this.config.mapWidth; x++) {
+                map[y][x] = 0;
+            }
+        }
+        
+        console.log('[generateMapFromPath] 初始地图创建完成:', map.length, '行', map[0]?.length || 0, '列');
+        
+        // 填充连续路径（90度曲折）
+        for (let i = 0; i < pathPoints.length - 1; i++) {
+            const a = pathPoints[i], b = pathPoints[i + 1];
+            
+            if (a.x === b.x) { // 垂直移动
+                const yMin = Math.min(a.y, b.y);
+                const yMax = Math.max(a.y, b.y);
+                for (let y = yMin; y <= yMax; y++) {
+                    if (map[y] && map[y][a.x] !== undefined) {
+                        map[y][a.x] = 1;
+                    }
+                }
+            } else if (a.y === b.y) { // 水平移动
+                const xMin = Math.min(a.x, b.x);
+                const xMax = Math.max(a.x, b.x);
+                for (let x = xMin; x <= xMax; x++) {
+                    if (map[a.y] && map[a.y][x] !== undefined) {
+                        map[a.y][x] = 1;
+                    }
+                }
+            }
+        }
+        
+        // 标记起点和终点
+        const start = pathPoints[0];
+        const end = pathPoints[pathPoints.length - 1];
+        if (start && map[start.y] && map[start.y][start.x] !== undefined) {
+            map[start.y][start.x] = 2;
+        }
+        if (end && map[end.y] && map[end.y][end.x] !== undefined) {
+            map[end.y][end.x] = 3;
+        }
+        
+        console.log('[generateMapFromPath] 地图生成完成');
         return map;
     }
 
     // ---- 事件监听 ----
     initializeEventListeners() {
-        document.getElementById('start-btn').addEventListener('click',   () => this.startGame());
+        document.getElementById('start-btn').addEventListener('click',   async () => await this.startGame());
         document.getElementById('pause-btn').addEventListener('click',   () => this.togglePause());
-        document.getElementById('restart-btn').addEventListener('click', () => this.restartGame());
+        document.getElementById('restart-btn').addEventListener('click', async () => await this.restartGame());
+        
+        // 关卡选择
+        document.getElementById('load-level-btn').addEventListener('click', async () => {
+            const levelId = parseInt(document.getElementById('level-select').value);
+            await this.loadSpecificLevel(levelId);
+        });
 
         // ---- 拖拽系统 ----
         // 从武器面板 mousedown 开始拖拽
@@ -475,38 +758,109 @@ class TowerDefenseGame {
             gy >= 0 && gy < this.config.mapHeight &&
             this.gameMap[gy][gx] === 0) {
             // 检查是否已有炮台
-            const occupied = this.towers.some(t =>
+            const existing = this.towers.find(t =>
                 Math.floor(t.x / this.config.cellSize) === gx &&
                 Math.floor(t.y / this.config.cellSize) === gy
             );
-            if (occupied) return;
+            
+            if (existing) {
+                // 尝试升级现有塔
+                this._tryUpgradeTower(existing);
+                return;
+            }
+            
+            // 放置新塔
+            if (this.gold < cost) {
+                this._insufficientGoldFlash = 40;
+                return;
+            }
+            
             this.gold -= cost;
+            const baseStats = this.towerUpgrades[type];
             this.towers.push({
                 type,
-                x:        gx * this.config.cellSize + this.config.cellSize / 2,
-                y:        gy * this.config.cellSize + this.config.cellSize / 2,
-                range:    this.getTowerRange(type),
-                damage:   this.getTowerDamage(type),
-                fireRate: this.getTowerFireRate(type),
+                level: 1,
+                x: gx * this.config.cellSize + this.config.cellSize / 2,
+                y: gy * this.config.cellSize + this.config.cellSize / 2,
+                range: baseStats.range,
+                damage: baseStats.damage,
+                fireRate: baseStats.fireRate,
                 lastFire: 0,
-                deployAnim: 20  // 部署动画帧数（缩放弹出）
+                deployAnim: 20
             });
-            this.audio.playDeploy(type); // 部署落地音效
+            this.audio.playDeploy(type);
             this.updateUI();
         }
     }
 
+    // ---- 尝试升级防御塔 ----
+    _tryUpgradeTower(tower) {
+        const upgrade = this.towerUpgrades[tower.type];
+        if (tower.level >= upgrade.maxLevel) {
+            this.showOverlay('升级提示', `${this.getTowerDisplayName(tower.type)} 已达到最高等级！`);
+            return;
+        }
+        
+        const upgradeCost = Math.floor(upgrade.cost * tower.level * 1.5);
+        if (this.gold < upgradeCost) {
+            this._insufficientGoldFlash = 40;
+            return;
+        }
+        
+        this.gold -= upgradeCost;
+        tower.level++;
+        tower.damage = Math.floor(upgrade.damage * (1 + tower.level * 0.4));
+        tower.range = Math.floor(upgrade.range * (1 + tower.level * 0.15));
+        tower.fireRate = Math.floor(upgrade.fireRate * (1 - tower.level * 0.1));
+        
+        // 升级特效
+        tower.deployAnim = 15;
+        this.audio.playDeploy(tower.type);
+        
+        this.showOverlay('升级成功', `${this.getTowerDisplayName(tower.type)} 升级到 Lv.${tower.level}\n花费: ${upgradeCost} 金币`);
+        this.updateUI();
+    }
+
+    getTowerDisplayName(type) {
+        return { basic: '岸炮', rocket: '火箭', missile: '导弹' }[type] || '塔';
+    }
+
+    // 获取升级费用
+    getUpgradeCost(tower) {
+        const base = this.towerUpgrades[tower.type];
+        return Math.floor(base.cost * tower.level * 1.5);
+    }
+
     // ---- 游戏控制 ----
-    startGame() {
+    async startGame() {
+        console.log('[startGame] 开始，当前状态:', this.gameState, 'wave:', this.wave);
+        if (this.gameState !== 'idle' && this.gameState !== 'between_waves') {
+            console.log('[startGame] 状态不正确，返回');
+            return;
+        }
+        
+        // 确保关卡已加载
+        if (!this.currentLevel) {
+            console.log('[startGame] 关卡未加载，开始加载');
+            await this.loadLevel(this.level || 1);
+        }
+        
+        console.log('[startGame] 关卡已加载:', this.currentLevel?.name);
+        
         this.audio.resume();
-        this.gameState = 'playing';
         this.audio.startBGM();
-        this.showOverlay('游戏开始', '保卫台湾同胞，从南到北解放城市！');
+        this.hideOverlay();
+        
+        // 开始新波次
+        console.log('[startGame] 调用 startWave()');
         this.startWave();
+        
+        this.gameState = 'playing';
+        console.log('[startGame] 完成，状态设置为 playing');
     }
 
     togglePause() {
-        if (this.gameState === 'playing' || this.gameState === 'between_waves') {
+        if (this.gameState === 'playing') {
             this.gameState = 'paused';
             this.audio.stopBGM();
             this.showOverlay('游戏暂停', '点击确定继续游戏');
@@ -517,12 +871,10 @@ class TowerDefenseGame {
         }
     }
 
-    restartGame() {
+    async restartGame() {
         this.audio.stopBGM();
         this.gameState    = 'idle';
         this.score        = 0;
-        this.gold         = 100;
-        this.health       = 100;
         this.level        = 1;
         this.wave         = 0;
         this.enemies      = [];
@@ -530,64 +882,142 @@ class TowerDefenseGame {
         this.projectiles  = [];
         this.gameTime     = 0;
         this.waveSpawning = false;
+        this.spawnQueue   = [];
+        this.spawnTimer   = 0;
+        this._waveRewarded = false;
         this.drag         = null;
         document.body.style.cursor = '';
+        
+        await this.loadLevel(1);
         this.hideOverlay();
-        this.updateUI();
+        this.showOverlay('游戏开始', '保卫台湾同胞，从南到北解放城市！\n点击"开始游戏"按钮开始战斗');
+    }
+    
+    // ---- 加载指定关卡 ----
+    async loadSpecificLevel(levelId) {
+        console.log('[loadSpecificLevel] 加载指定关卡:', levelId);
+        
+        // 重置游戏状态
+        this.audio.stopBGM();
+        this.gameState    = 'idle';
+        this.wave         = 0;
+        this.enemies      = [];
+        this.towers       = [];
+        this.projectiles  = [];
+        this.gameTime     = 0;
+        this.waveSpawning = false;
+        this.spawnQueue   = [];
+        this.spawnTimer   = 0;
+        this._waveRewarded = false;
+        this.drag         = null;
+        document.body.style.cursor = '';
+        
+        // 加载指定关卡
+        const success = await this.loadLevel(levelId);
+        if (success) {
+            this.level = levelId;
+            this.hideOverlay();
+            this.showOverlay('关卡已加载', `${this.currentLevel.name}\n点击"开始游戏"开始战斗`);
+            this.updateUI();
+        } else {
+            this.showOverlay('错误', '无法加载指定关卡');
+        }
     }
 
-    getTowerRange(type)    { return { basic: 150, rocket: 200, missile: 280 }[type] || 150; }
-    getTowerDamage(type)   { return { basic: 20,  rocket: 40,  missile: 80  }[type] || 20;  }
-    getTowerFireRate(type) { return { basic: 600, rocket: 900, missile: 1200}[type] || 600; }
+    getTowerRange(type, level = 1) { 
+        const base = { basic: 150, rocket: 200, missile: 280 }[type] || 150;
+        return Math.floor(base * (1 + (level - 1) * 0.15));
+    }
+    getTowerDamage(type, level = 1) { 
+        const base = { basic: 20,  rocket: 40,  missile: 80  }[type] || 20;
+        return Math.floor(base * (1 + (level - 1) * 0.4));
+    }
+    getTowerFireRate(type, level = 1) { 
+        const base = { basic: 600, rocket: 900, missile: 1200}[type] || 600;
+        return Math.floor(base * (1 - (level - 1) * 0.1));
+    }
 
     // ---- 波次 ----
     startWave() {
+        console.log('[startWave] 开始，currentLevel:', !!this.currentLevel, 'wave:', this.wave);
+        if (!this.currentLevel) {
+            console.error('[startWave] currentLevel 未定义，无法开始波次');
+            return;
+        }
+        if (this.wave >= this.currentLevel.enemyWaves) {
+            console.log('[startWave] 波次已完成，不开始新波次');
+            return;
+        }
+        
         this.wave++;
         this.waveSpawning = true;
-        let count = 0;
-        const spawn = () => {
-            if (count < this.config.waveSize && this.gameState === 'playing') {
-                this.spawnEnemy();
-                count++;
-                setTimeout(spawn, this.config.enemySpawnInterval);
-            } else {
-                this.waveSpawning = false;
-            }
-        };
-        spawn();
+        this._waveRewarded = false;
+        this.spawnTimer = 0;
+        
+        // 构建生成队列
+        this.spawnQueue = [];
+        const waveConfig = this.currentLevel;
+        const interval = waveConfig.spawnInterval;
+        
+        console.log(`[startWave] 配置: ${waveConfig.enemiesPerWave} 个敌人，间隔 ${interval}ms`);
+        
+        for (let i = 0; i < waveConfig.enemiesPerWave; i++) {
+            // 根据波次选择敌人类型
+            const availableTypes = waveConfig.enemyTypes;
+            const typeIndex = Math.min(this.wave - 1, availableTypes.length - 1);
+            const type = availableTypes[typeIndex];
+            
+            this.spawnQueue.push({
+                time: i * interval,
+                type: type
+            });
+        }
+        
+        console.log(`[startWave] 生成队列已构建，共 ${this.spawnQueue.length} 个敌人`);
+        
+        // 显示波次Banner
+        this._showWaveBanner();
+        console.log(`[Wave ${this.wave}/${this.currentLevel.enemyWaves}] 开始生成`);
     }
 
-    spawnEnemy() {
-        const types = ['infantry', 'tank', 'boss'];
-        const type  = types[Math.min(this.wave - 1, 2)];
+    _showWaveBanner() {
+        this._waveBannerUntil = performance.now() + 2500;
+    }
+
+    _spawnEnemy(type) {
+        const start = this.currentLevel.map.start;
         this.enemies.push({
             type,
-            x:         20,
-            y:         7 * this.config.cellSize + this.config.cellSize / 2,
-            health:    this.getEnemyHealth(type),
+            x: start.x * this.config.cellSize + this.config.cellSize / 2,
+            y: start.y * this.config.cellSize + this.config.cellSize / 2,
+            health: this.getEnemyHealth(type),
             maxHealth: this.getEnemyHealth(type),
-            speed:     this.getEnemySpeed(type),
+            speed: this.getEnemySpeed(type),
             pathIndex: 0,
-            path:      this.getEnemyPath(),
-            hitFlash:  0   // 受击闪白计时
+            path: this.currentLevel.map.path,
+            hitFlash: 0
         });
     }
 
     getEnemyHealth(type) { return { infantry: 30, tank: 70, boss: 180 }[type] || 30; }
     getEnemySpeed(type)  { return { infantry: 1,  tank: 0.7, boss: 0.5 }[type] || 1;  }
 
-    getEnemyPath() {
-        return [
-            { x: 0,  y: 7 },
-            { x: 5,  y: 7 },
-            { x: 10, y: 7 },
-            { x: 15, y: 7 },
-            { x: 19, y: 7 }
-        ];
-    }
-
     // ---- 更新逻辑 ----
     updateEnemies(dt) {
+        // 帧驱动的敌人生成
+        if (this.waveSpawning && this.spawnQueue.length > 0) {
+            this.spawnTimer += dt;
+            while (this.spawnQueue.length > 0 && this.spawnTimer >= this.spawnQueue[0].time) {
+                const entry = this.spawnQueue.shift();
+                this._spawnEnemy(entry.type);
+            }
+            if (this.spawnQueue.length === 0) {
+                this.waveSpawning = false;
+                console.log(`[Wave ${this.wave}] 所有敌人已生成`);
+            }
+        }
+        
+        // 更新敌人位置
         for (let i = this.enemies.length - 1; i >= 0; i--) {
             const e = this.enemies[i];
             if (e.hitFlash > 0) e.hitFlash -= dt;
@@ -682,21 +1112,79 @@ class TowerDefenseGame {
     }
 
     checkWaveCompletion() {
-        if (!this.waveSpawning && this.enemies.length === 0 && this.gameState === 'playing') {
-            this.level++;
-            this.gold += 50;
-            this.updateUI();
-            if (this.level <= 5) {
+        if (!this.waveSpawning && this.enemies.length === 0 && this.gameState === 'playing' && !this._waveRewarded) {
+            this._waveRewarded = true;
+            
+            // 波次奖励
+            this.gold += this.currentLevel.reward;
+            this.score += this.wave * 10;
+            console.log(`[Wave ${this.wave}] 完成！奖励 ${this.currentLevel.reward} 金币`);
+            
+            if (this.wave >= this.currentLevel.enemyWaves) {
+                // 最后一波完成 → 关卡完成
+                this._onLevelComplete();
+            } else {
+                // 中间波次：静默自动进入下一波（不弹 overlay），2秒延迟
                 this.gameState = 'between_waves';
+                console.log(`[Wave ${this.wave}] 中间波次完成，2秒后自动开始下一波`);
+                
                 setTimeout(() => {
                     if (this.gameState === 'between_waves') {
-                        this.gameState = 'playing';
                         this.startWave();
+                        this.gameState = 'playing';
                     }
-                }, 3000);
-            } else {
-                this.victory();
+                }, 2000);
             }
+            this.updateUI();
+        }
+    }
+
+    async _onLevelComplete() {
+        const totalLevels = this.levels ? this.levels.length : 1;
+        
+        if (this.level >= totalLevels) {
+            // 所有关卡完成 → 胜利
+            this.victory();
+        } else {
+            // 进入下一关
+            const nextLevelId = this.level + 1;
+            const nextLevelData = this.levels ? this.levels.find(l => l.id === nextLevelId) : null;
+            const nextName = nextLevelData ? nextLevelData.name : `第 ${nextLevelId} 关`;
+            
+            this.gameState = 'between_waves'; // 防止 checkWaveCompletion 重复触发
+            this.showOverlay('关卡完成！', `${this.currentLevel.name} 完成！\n3秒后自动进入下一关：${nextName}`);
+            
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            // 重置本关状态（保留得分和金币作为奖励）
+            this.wave = 0;
+            this.enemies = [];
+            this.towers = [];
+            this.projectiles = [];
+            this.waveSpawning = false;
+            this.spawnQueue = [];
+            this.spawnTimer = 0;
+            this._waveRewarded = false;
+            
+            // 加载下一关
+            const success = await this.loadLevel(nextLevelId);
+            
+            if (!success) {
+                this.showOverlay('错误', `无法加载关卡 ${nextLevelId}`);
+                return;
+            }
+            
+            // 更新关卡选择下拉框
+            if (document.getElementById('level-select')) {
+                document.getElementById('level-select').value = this.level;
+            }
+            
+            // 1秒后自动开始下一关的第一波
+            setTimeout(() => {
+                this.hideOverlay();
+                this.startWave();
+                this.gameState = 'playing';
+            }, 1000);
         }
     }
 
@@ -724,7 +1212,12 @@ class TowerDefenseGame {
     updateUI() {
         document.getElementById('gold').textContent   = this.gold;
         document.getElementById('health').textContent = Math.max(0, this.health);
-        document.getElementById('level').textContent  = this.level;
+        document.getElementById('level').textContent  = this.currentLevel ? this.currentLevel.name : `关卡 ${this.level}`;
+        
+        // 更新关卡选择下拉框（确保与当前关卡同步）
+        if (document.getElementById('level-select')) {
+            document.getElementById('level-select').value = this.level;
+        }
     }
 
     // ---- 渲染 ----
@@ -741,10 +1234,32 @@ class TowerDefenseGame {
 
     renderMap() {
         const { cellSize, mapWidth, mapHeight } = this.config;
+        
+        if (!this.gameMap || !Array.isArray(this.gameMap) || this.gameMap.length === 0) {
+            // 渲染一个错误提示
+            this.ctx.fillStyle = 'rgba(231, 76, 60, 0.8)';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.fillStyle = 'white';
+            this.ctx.font = 'bold 20px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('地图加载失败', this.canvas.width / 2, this.canvas.height / 2 - 20);
+            this.ctx.font = '16px Arial';
+            this.ctx.fillText('请检查 levels.json 文件', this.canvas.width / 2, this.canvas.height / 2 + 20);
+            this.ctx.textAlign = 'left';
+            return;
+        }
+        
         for (let y = 0; y < mapHeight; y++) {
             for (let x = 0; x < mapWidth; x++) {
                 const cx = x * cellSize, cy = y * cellSize;
-                const v  = this.gameMap[y][x];
+                
+                // 检查 gameMap[y][x] 是否存在
+                if (!this.gameMap[y] || this.gameMap[y][x] === undefined) {
+                    continue;
+                }
+                
+                const v = this.gameMap[y][x];
+                
                 if (v === 0) {
                     this.ctx.fillStyle = '#34495e';
                     this.ctx.fillRect(cx, cy, cellSize, cellSize);
@@ -761,27 +1276,21 @@ class TowerDefenseGame {
                     this.ctx.fillRect(cx, cy, cellSize, cellSize);
                     this.ctx.fillStyle = 'white';
                     this.ctx.font = 'bold 11px Arial';
-                    this.ctx.fillText('高雄', cx + 4, cy + 14);
+                    const startLabel = (this.currentLevel && this.currentLevel.map.startLabel) || '起点';
+                    this.ctx.fillText(startLabel, cx + 4, cy + 14);
                     this.ctx.fillText('起点', cx + 4, cy + 28);
                 } else if (v === 3) {
                     this.ctx.fillStyle = '#27ae60';
                     this.ctx.fillRect(cx, cy, cellSize, cellSize);
                     this.ctx.fillStyle = 'white';
                     this.ctx.font = 'bold 11px Arial';
-                    this.ctx.fillText('台北', cx + 4, cy + 14);
+                    const endLabel = (this.currentLevel && this.currentLevel.map.endLabel) || '终点';
+                    this.ctx.fillText(endLabel, cx + 4, cy + 14);
                     this.ctx.fillText('终点', cx + 4, cy + 28);
                 }
             }
         }
-        // 标注中间城市
-        const cities = [
-            { x: 5, label: '台中' }, { x: 10, label: '新竹' }, { x: 15, label: '桃园' }
-        ];
-        cities.forEach(c => {
-            this.ctx.fillStyle = 'rgba(255,255,255,0.6)';
-            this.ctx.font = '10px Arial';
-            this.ctx.fillText(c.label, c.x * cellSize + 4, 7 * cellSize + 14);
-        });
+        
     }
 
     renderEnemies() {
@@ -818,15 +1327,13 @@ class TowerDefenseGame {
 
     renderTowers() {
         this.towers.forEach(tower => {
-            // 部署动画：deployAnim 帧数递减，影响缩放
             if (tower.deployAnim > 0) tower.deployAnim--;
-            const scale = tower.deployAnim > 0
-                ? 1 + tower.deployAnim * 0.04   // 0~20帧弹出放大后缩回
-                : 1;
+            const scale = tower.deployAnim > 0 ? 1 + tower.deployAnim * 0.04 : 1;
 
-            // 拖拽中或 between_waves 时显示已放置塔的射程
-            if (this.drag && this.drag.active) {
-                this.ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+            // 始终显示射程（拖拽时更明显）
+            const showRange = this.drag && this.drag.active;
+            if (showRange) {
+                this.ctx.strokeStyle = 'rgba(255,255,255,0.18)';
                 this.ctx.lineWidth = 1;
                 this.ctx.beginPath();
                 this.ctx.arc(tower.x, tower.y, tower.range, 0, Math.PI * 2);
@@ -838,25 +1345,30 @@ class TowerDefenseGame {
             this.ctx.translate(tower.x, tower.y);
             this.ctx.scale(scale, scale);
 
-            // 底座
-            this.ctx.fillStyle = '#2c3e50';
+            // 底座（根据等级变色）
+            const levelColor = tower.level === 1 ? '#2c3e50' : 
+                              tower.level === 2 ? '#7f8c8d' : '#f39c12';
+            this.ctx.fillStyle = levelColor;
             this.ctx.beginPath();
             this.ctx.arc(0, 0, 14, 0, Math.PI * 2);
             this.ctx.fill();
+            
             // 主体
             this.ctx.fillStyle = this.getTowerColor(tower.type);
             this.ctx.beginPath();
             this.ctx.arc(0, 0, 11, 0, Math.PI * 2);
             this.ctx.fill();
-            // 外圈高亮（部署瞬间发光）
-            if (tower.deployAnim > 10) {
-                this.ctx.strokeStyle = 'rgba(255,255,255,' + (tower.deployAnim / 20 * 0.8) + ')';
+            
+            // 升级发光效果
+            if (tower.deployAnim > 8) {
+                this.ctx.strokeStyle = 'rgba(255,255,255,' + (tower.deployAnim / 15 * 0.9) + ')';
                 this.ctx.lineWidth = 3;
                 this.ctx.beginPath();
                 this.ctx.arc(0, 0, 14, 0, Math.PI * 2);
                 this.ctx.stroke();
                 this.ctx.lineWidth = 1;
             }
+            
             // 炮管
             this.ctx.strokeStyle = '#ecf0f1';
             this.ctx.lineWidth = 3;
@@ -865,11 +1377,12 @@ class TowerDefenseGame {
             this.ctx.lineTo(tower.type === 'missile' ? 0 : 14, -10);
             this.ctx.stroke();
             this.ctx.lineWidth = 1;
-            // 标签
+            
+            // 等级标签
             this.ctx.fillStyle = 'white';
-            this.ctx.font = '9px Arial';
+            this.ctx.font = 'bold 10px Arial';
             this.ctx.textAlign = 'center';
-            this.ctx.fillText(this.getTowerText(tower.type), 0, 4);
+            this.ctx.fillText(`Lv.${tower.level}`, 0, 4);
             this.ctx.textAlign = 'left';
 
             this.ctx.restore();
@@ -891,7 +1404,7 @@ class TowerDefenseGame {
     }
 
     renderUI() {
-        // 波次提示
+        // 左上角游戏信息
         this.ctx.fillStyle = 'rgba(0,0,0,0.45)';
         this.ctx.fillRect(4, 4, 130, 48);
         this.ctx.fillStyle = '#f1c40f';
@@ -899,16 +1412,52 @@ class TowerDefenseGame {
         this.ctx.fillText(`得分: ${this.score}`, 10, 20);
         this.ctx.fillStyle = 'white';
         this.ctx.font = '13px Arial';
-        this.ctx.fillText(`第 ${this.wave} 波`, 10, 38);
+        this.ctx.fillText(`第 ${this.wave}/${this.currentLevel ? this.currentLevel.enemyWaves : 0} 波`, 10, 38);
 
-        // 间隔提示
-        if (this.gameState === 'between_waves') {
-            this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
-            this.ctx.fillRect(this.canvas.width / 2 - 100, 10, 200, 30);
-            this.ctx.fillStyle = '#2ecc71';
-            this.ctx.font = 'bold 14px Arial';
+        // 波次Banner（大字体中央显示）
+        const now = performance.now();
+        if (now < this._waveBannerUntil) {
+            const alpha = Math.min(1, (this._waveBannerUntil - now) / 500);
+            this.ctx.save();
+            this.ctx.globalAlpha = alpha;
+            this.ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            this.ctx.fillRect(this.canvas.width / 2 - 150, this.canvas.height / 2 - 50, 300, 60);
+            this.ctx.fillStyle = '#f1c40f';
+            this.ctx.font = 'bold 28px Arial';
             this.ctx.textAlign = 'center';
-            this.ctx.fillText('下一波即将到来...', this.canvas.width / 2, 30);
+            this.ctx.fillText(`第 ${this.wave} 波来袭！`, this.canvas.width / 2, this.canvas.height / 2 - 15);
+            if (this.currentLevel) {
+                this.ctx.fillStyle = 'white';
+                this.ctx.font = '16px Arial';
+                this.ctx.fillText(this.currentLevel.description, this.canvas.width / 2, this.canvas.height / 2 + 15);
+            }
+            this.ctx.textAlign = 'left';
+            this.ctx.restore();
+        }
+
+        // 关卡信息（右上角）
+        if (this.currentLevel) {
+            this.ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            this.ctx.fillRect(this.canvas.width - 220, 4, 216, 56);
+            this.ctx.fillStyle = '#3498db';
+            this.ctx.font = 'bold 15px Arial';
+            this.ctx.textAlign = 'right';
+            this.ctx.fillText(this.currentLevel.name, this.canvas.width - 10, 22);
+            this.ctx.fillStyle = 'white';
+            this.ctx.font = '12px Arial';
+            this.ctx.fillText(`进度: ${this.wave}/${this.currentLevel.enemyWaves} 波`, this.canvas.width - 10, 40);
+            this.ctx.fillText(`奖励: ${this.currentLevel.reward} 金币/波`, this.canvas.width - 10, 55);
+            this.ctx.textAlign = 'left';
+        }
+
+        // 间隔提示（底部中央）
+        if (this.gameState === 'between_waves') {
+            this.ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            this.ctx.fillRect(this.canvas.width / 2 - 120, this.canvas.height - 40, 240, 32);
+            this.ctx.fillStyle = '#2ecc71';
+            this.ctx.font = 'bold 15px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('准备就绪 - 点击"开始游戏"进入下一波', this.canvas.width / 2, this.canvas.height - 20);
             this.ctx.textAlign = 'left';
         }
 
@@ -1006,16 +1555,24 @@ class TowerDefenseGame {
 
     // ---- 主循环 ----
     gameLoop() {
+        // 如果游戏未准备好，不执行任何逻辑，但继续请求下一帧
+        if (!this._isReady) {
+            requestAnimationFrame(() => this.gameLoop());
+            return;
+        }
+        
         const now = performance.now();
         const dt  = now - (this.lastTime || now);
         this.lastTime = now;
 
-        if (this.gameState === 'playing') {
+        if (this.gameState === 'playing' || this.gameState === 'between_waves') {
             this.gameTime += dt;
             this.updateEnemies(dt);
             this.updateTowers(dt);
             this.updateProjectiles();
-            this.checkWaveCompletion();
+            if (this.gameState === 'playing') {
+                this.checkWaveCompletion();
+            }
         }
 
         this.render();
