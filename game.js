@@ -455,7 +455,6 @@ class TowerDefenseGame {
             this.gameMap = this.generateMapFromPath(this.currentLevel.map.path);
             
             console.log('[loadLevel] 关卡加载成功:', this.currentLevel.name);
-            console.log('[loadLevel] gameMap 尺寸:', this.gameMap?.length, 'x', this.gameMap?.[0]?.length);
             return true;
         } catch (e) {
             console.error('[loadLevel] 加载关卡失败:', e);
@@ -476,10 +475,10 @@ class TowerDefenseGame {
                 id: 1,
                 name: "高雄战役",
                 description: "解放台湾南部，保卫高雄同胞",
-                startingGold: 120,
+                startingGold: 20,
                 startingHealth: 100,
                 enemyWaves: 3,
-                enemiesPerWave: 6,
+                baseEnemiesPerWave: 5,
                 enemyTypes: ["infantry"],
                 spawnInterval: 2500,
                 reward: 40,
@@ -501,10 +500,10 @@ class TowerDefenseGame {
                 id: 2,
                 name: "台中防线",
                 description: "突破台中防线，向北推进",
-                startingGold: 150,
+                startingGold: 20,
                 startingHealth: 100,
                 enemyWaves: 4,
-                enemiesPerWave: 7,
+                baseEnemiesPerWave: 6,
                 enemyTypes: ["infantry", "tank"],
                 spawnInterval: 2200,
                 reward: 50,
@@ -528,10 +527,10 @@ class TowerDefenseGame {
                 id: 3,
                 name: "新竹保卫战",
                 description: "攻克新竹科技重镇",
-                startingGold: 180,
+                startingGold: 20,
                 startingHealth: 100,
                 enemyWaves: 4,
-                enemiesPerWave: 8,
+                baseEnemiesPerWave: 7,
                 enemyTypes: ["infantry", "tank"],
                 spawnInterval: 2000,
                 reward: 55,
@@ -556,10 +555,10 @@ class TowerDefenseGame {
                 id: 4,
                 name: "桃园攻坚战",
                 description: "拿下桃园，直逼台北",
-                startingGold: 200,
+                startingGold: 20,
                 startingHealth: 100,
                 enemyWaves: 5,
-                enemiesPerWave: 8,
+                baseEnemiesPerWave: 8,
                 enemyTypes: ["infantry", "tank", "boss"],
                 spawnInterval: 2000,
                 reward: 60,
@@ -585,10 +584,10 @@ class TowerDefenseGame {
                 id: 5,
                 name: "台北决战",
                 description: "最终决战，解放台湾首府！",
-                startingGold: 250,
+                startingGold: 20,
                 startingHealth: 100,
                 enemyWaves: 5,
-                enemiesPerWave: 10,
+                baseEnemiesPerWave: 9,
                 enemyTypes: ["tank", "boss"],
                 spawnInterval: 1800,
                 reward: 80,
@@ -959,9 +958,25 @@ class TowerDefenseGame {
         const waveConfig = this.currentLevel;
         const interval = waveConfig.spawnInterval;
         
-        console.log(`[startWave] 配置: ${waveConfig.enemiesPerWave} 个敌人，间隔 ${interval}ms`);
+        // 波次递增机制（第一波之后开始递增）
+        const waveIncrement = this.wave > 1 ? this.wave - 1 : 0;
         
-        for (let i = 0; i < waveConfig.enemiesPerWave; i++) {
+        // 敌人数量递增：基础数量 + 波次递增 * 1.5，上限为基础数量的2.5倍
+        const baseEnemyCount = waveConfig.baseEnemiesPerWave;
+        const enemyCountIncrement = waveIncrement * 1.5;
+        const maxEnemyCount = Math.floor(baseEnemyCount * 2.5);
+        let enemyCount = Math.floor(baseEnemyCount + enemyCountIncrement);
+        enemyCount = Math.min(enemyCount, maxEnemyCount);
+        
+        // 敌人属性递增系数（生命值和速度）
+        const healthMultiplier = 1 + (waveIncrement * 0.25); // 每波生命值增加25%
+        const speedMultiplier = 1 + (waveIncrement * 0.08);  // 每波速度增加8%
+        const maxHealthMultiplier = 2.5; // 生命值上限为250%
+        const maxSpeedMultiplier = 1.4;  // 速度上限为140%
+        
+        console.log(`[startWave] 第${this.wave}波，敌人数量: ${enemyCount}，生命倍率: ${Math.min(healthMultiplier, maxHealthMultiplier).toFixed(2)}，速度倍率: ${Math.min(speedMultiplier, maxSpeedMultiplier).toFixed(2)}`);
+        
+        for (let i = 0; i < enemyCount; i++) {
             // 根据波次选择敌人类型
             const availableTypes = waveConfig.enemyTypes;
             const typeIndex = Math.min(this.wave - 1, availableTypes.length - 1);
@@ -969,7 +984,9 @@ class TowerDefenseGame {
             
             this.spawnQueue.push({
                 time: i * interval,
-                type: type
+                type: type,
+                healthMultiplier: Math.min(healthMultiplier, maxHealthMultiplier),
+                speedMultiplier: Math.min(speedMultiplier, maxSpeedMultiplier)
             });
         }
         
@@ -984,15 +1001,18 @@ class TowerDefenseGame {
         this._waveBannerUntil = performance.now() + 2500;
     }
 
-    _spawnEnemy(type) {
+    _spawnEnemy(type, healthMultiplier = 1, speedMultiplier = 1) {
         const start = this.currentLevel.map.start;
+        const baseHealth = this.getEnemyHealth(type);
+        const baseSpeed = this.getEnemySpeed(type);
+        
         this.enemies.push({
             type,
             x: start.x * this.config.cellSize + this.config.cellSize / 2,
             y: start.y * this.config.cellSize + this.config.cellSize / 2,
-            health: this.getEnemyHealth(type),
-            maxHealth: this.getEnemyHealth(type),
-            speed: this.getEnemySpeed(type),
+            health: Math.floor(baseHealth * healthMultiplier),
+            maxHealth: Math.floor(baseHealth * healthMultiplier),
+            speed: baseSpeed * speedMultiplier,
             pathIndex: 0,
             path: this.currentLevel.map.path,
             hitFlash: 0
@@ -1009,7 +1029,7 @@ class TowerDefenseGame {
             this.spawnTimer += dt;
             while (this.spawnQueue.length > 0 && this.spawnTimer >= this.spawnQueue[0].time) {
                 const entry = this.spawnQueue.shift();
-                this._spawnEnemy(entry.type);
+                this._spawnEnemy(entry.type, entry.healthMultiplier, entry.speedMultiplier);
             }
             if (this.spawnQueue.length === 0) {
                 this.waveSpawning = false;
@@ -1156,7 +1176,7 @@ class TowerDefenseGame {
             
             await new Promise(resolve => setTimeout(resolve, 3000));
             
-            // 重置本关状态（保留得分和金币作为奖励）
+            // 重置本关状态（保留得分，但金币重置为20）
             this.wave = 0;
             this.enemies = [];
             this.towers = [];
@@ -1165,6 +1185,7 @@ class TowerDefenseGame {
             this.spawnQueue = [];
             this.spawnTimer = 0;
             this._waveRewarded = false;
+            this.gold = 20; // 金币重置为20
             
             // 加载下一关
             const success = await this.loadLevel(nextLevelId);
